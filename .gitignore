@@ -1,6 +1,0 @@
-venv/ 
-drivers/ 
-screenshots/ 
-screenshots_full/ 
-__pycache__/ 
-*.pyc 
