@@ -1,6 +1,6 @@
 @echo off 
 setlocal EnableDelayedExpansion 
-echo Website Screenshot Tool 
+echo Website Full-Page Screenshot Tool 
 echo. 
  
 :: Check if the virtual environment exists 
@@ -43,7 +43,7 @@ echo.
 :: Activate the virtual environment and run the script with increased timeout 
 call venv\Scripts\activate 
 set PYTHONIOENCODING=utf-8 
-python scripts\website_screenshot.py "!url_file!" 
+python scripts\website_screenshot_full.py "!url_file!" 
  
 :: Deactivate the virtual environment 
 call venv\Scripts\deactivate.bat 
