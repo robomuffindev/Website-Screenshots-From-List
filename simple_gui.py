@@ -6,13 +6,14 @@ import threading
 import subprocess
 import time
 import queue
+import glob
 
 class WebsiteScreenshotGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Website Screenshot Tool")
-        self.root.geometry("800x600")
-        self.root.minsize(800, 600)
+        self.root.geometry("800x700")
+        self.root.minsize(800, 700)
         
         # Set up queue for threaded output
         self.queue = queue.Queue()
@@ -24,6 +25,12 @@ class WebsiteScreenshotGUI:
         self.status_var = tk.StringVar(value="Ready")
         self.total_urls = 0
         self.processed_urls = 0
+        self.last_output_dir = None  # Track the last output directory
+        
+        # Image processing options
+        self.resize_images = tk.BooleanVar(value=True)
+        self.resize_width = tk.IntVar(value=800)
+        self.save_webp = tk.BooleanVar(value=True)
         
         # Create main frame
         main_frame = ttk.Frame(root, padding="10")
@@ -34,7 +41,7 @@ class WebsiteScreenshotGUI:
         
         # Configure grid weights
         main_frame.columnconfigure(0, weight=1)
-        main_frame.rowconfigure(3, weight=1)
+        main_frame.rowconfigure(4, weight=1)
         
         # Start queue processing
         self.process_queue()
@@ -73,9 +80,35 @@ class WebsiteScreenshotGUI:
         )
         full_radio.grid(row=1, column=0, sticky="w", padx=5, pady=5)
         
+        # Image Processing Options
+        process_frame = ttk.LabelFrame(parent, text="Image Processing Options", padding="10")
+        process_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
+        process_frame.columnconfigure(1, weight=1)
+        
+        # Resize Images Option
+        resize_check = ttk.Checkbutton(
+            process_frame, 
+            text="Resize Images After Process", 
+            variable=self.resize_images
+        )
+        resize_check.grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        
+        # Width Entry
+        ttk.Label(process_frame, text="Width:").grid(row=0, column=1, sticky="e", padx=5, pady=5)
+        width_entry = ttk.Entry(process_frame, textvariable=self.resize_width, width=5)
+        width_entry.grid(row=0, column=2, sticky="e", padx=5, pady=5)
+        
+        # WebP Option
+        webp_check = ttk.Checkbutton(
+            process_frame, 
+            text="Save as WebP Format", 
+            variable=self.save_webp
+        )
+        webp_check.grid(row=1, column=0, sticky="w", padx=5, pady=5)
+        
         # Control Buttons
         button_frame = ttk.Frame(parent)
-        button_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
+        button_frame.grid(row=3, column=0, sticky="ew", padx=5, pady=5)
         
         start_button = ttk.Button(
             button_frame, 
@@ -91,9 +124,17 @@ class WebsiteScreenshotGUI:
         )
         stop_button.pack(side=tk.LEFT, padx=5, pady=5)
         
+        # Add Process Images Button
+        process_button = ttk.Button(
+            button_frame,
+            text="Process Latest Images",
+            command=self.process_latest_images
+        )
+        process_button.pack(side=tk.LEFT, padx=5, pady=5)
+        
         # Status and Progress
         status_frame = ttk.LabelFrame(parent, text="Status", padding="10")
-        status_frame.grid(row=3, column=0, sticky="nsew", padx=5, pady=5)
+        status_frame.grid(row=4, column=0, sticky="nsew", padx=5, pady=5)
         
         status_label = ttk.Label(status_frame, textvariable=self.status_var)
         status_label.grid(row=0, column=0, sticky="w", padx=5, pady=5)
@@ -150,8 +191,10 @@ class WebsiteScreenshotGUI:
         # Determine which script to run
         if self.screenshot_type.get() == "regular":
             script_name = "website_screenshot.py"
+            output_dir_base = "screenshots"
         else:  # "full"
             script_name = "website_screenshot_full.py"
+            output_dir_base = "screenshots_full"
         
         # Check if the script exists
         if not os.path.exists(script_name):
@@ -163,12 +206,12 @@ class WebsiteScreenshotGUI:
         # Create and start thread
         self.process_thread = threading.Thread(
             target=self.run_process,
-            args=(script_name, self.url_file_path.get()),
+            args=(script_name, self.url_file_path.get(), output_dir_base),
             daemon=True
         )
         self.process_thread.start()
     
-    def run_process(self, script_name, url_file):
+    def run_process(self, script_name, url_file, output_dir_base):
         try:
             # Start process
             cmd = f'python "{script_name}" "{url_file}"'
@@ -183,6 +226,10 @@ class WebsiteScreenshotGUI:
                 universal_newlines=True
             )
             
+            # Variables to track output directory
+            self.last_output_dir = None
+            screenshot_run_completed = False
+            
             # Monitor output
             for line in iter(self.process.stdout.readline, ''):
                 self.queue.put(line)
@@ -193,17 +240,254 @@ class WebsiteScreenshotGUI:
                     progress = (self.processed_urls / self.total_urls) * 100
                     self.progress_var.set(progress)
                 
+                # Extract output directory from log
+                if "Screenshots will be saved to:" in line:
+                    self.last_output_dir = line.split("Screenshots will be saved to:")[1].strip()
+                    self.queue.put(f"Detected output directory: {self.last_output_dir}\n")
+                
                 # Check if process was stopped
                 if not hasattr(self, 'process'):
                     break
+                
+                # Check if processing is completed
+                if "Finished processing all URLs" in line:
+                    screenshot_run_completed = True
             
             # Process completed
             self.status_var.set("Completed")
             self.progress_var.set(100.0)
+            
             self.queue.put("\nProcess completed.\n")
-        
+            
+            # If the checkbox was enabled, run image processing
+            if (self.resize_images.get() or self.save_webp.get()) and screenshot_run_completed and self.last_output_dir:
+                self.queue.put("\nWould you like to process images now? Use the 'Process Latest Images' button.\n")
+            
         except Exception as e:
             self.queue.put(f"Error: {e}\n")
+            self.status_var.set("Error")
+    
+    def process_latest_images(self):
+        """Run the process_last_screenshots.py script with parameters from UI"""
+        
+        # Check if we have a known output directory from the last run
+        directory_to_process = None
+        
+        if self.last_output_dir and os.path.exists(self.last_output_dir):
+            directory_to_process = self.last_output_dir
+            self.queue.put(f"\nUsing last screenshot directory: {directory_to_process}\n")
+        else:
+            # Find the latest directory ourselves
+            self.queue.put("\nLooking for the most recent screenshot directory...\n")
+            
+            # Define a function to find latest directory in a base dir
+            def find_latest_dir(base_dir):
+                if not os.path.exists(base_dir):
+                    return None
+                
+                dirs = [d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))]
+                if not dirs:
+                    return None
+                
+                # Filter directories that match the timestamp pattern
+                timestamp_dirs = [d for d in dirs if len(d.split("_")) >= 2 and len(d.split("_")[0].split("-")) >= 3]
+                
+                if not timestamp_dirs:
+                    return None
+                
+                # Sort by name (which effectively sorts by timestamp)
+                timestamp_dirs.sort(reverse=True)
+                return os.path.join(base_dir, timestamp_dirs[0])
+            
+            # Check regular screenshots
+            latest_regular = find_latest_dir("screenshots")
+            latest_full = find_latest_dir("screenshots_full")
+            
+            if latest_regular and latest_full:
+                # Compare timestamps to find the most recent one
+                if os.path.getmtime(latest_regular) > os.path.getmtime(latest_full):
+                    directory_to_process = latest_regular
+                    self.queue.put(f"Found most recent directory in regular screenshots: {directory_to_process}\n")
+                else:
+                    directory_to_process = latest_full
+                    self.queue.put(f"Found most recent directory in full-page screenshots: {directory_to_process}\n")
+            elif latest_regular:
+                directory_to_process = latest_regular
+                self.queue.put(f"Found most recent directory in regular screenshots: {directory_to_process}\n")
+            elif latest_full:
+                directory_to_process = latest_full
+                self.queue.put(f"Found most recent directory in full-page screenshots: {directory_to_process}\n")
+            else:
+                self.queue.put("No screenshot directories found. Please run the screenshot process first.\n")
+                return
+        
+        # Now that we have a directory to process, create and run the process
+        self.status_var.set("Processing Images...")
+        self.queue.put(f"\nStarting image processing with the following options:\n")
+        self.queue.put(f"- Resize: {self.resize_images.get()}\n")
+        self.queue.put(f"- Width: {self.resize_width.get()}\n")
+        self.queue.put(f"- WebP: {self.save_webp.get()}\n\n")
+        
+        # Create a temporary script file for processing
+        script_content = """
+import os
+import glob
+import sys
+from PIL import Image
+
+def process_images(folder_path, resize=True, resize_width=800, save_webp=True):
+    print(f"Processing images in folder: {folder_path}")
+    print(f"- Resize: {resize} (width={resize_width})")
+    print(f"- WebP conversion: {save_webp}")
+    
+    if not os.path.exists(folder_path):
+        print(f"Error: Folder {folder_path} does not exist.")
+        return
+    
+    # Get all PNG images in the folder
+    png_files = glob.glob(os.path.join(folder_path, "*.png"))
+    print(f"Found {len(png_files)} PNG images to process.")
+    
+    if len(png_files) == 0:
+        print("No images to process.")
+        return
+    
+    # Process for resizing
+    if resize:
+        # Create resized directory
+        resized_dir = os.path.join(folder_path, "resized")
+        os.makedirs(resized_dir, exist_ok=True)
+        print(f"Created resized directory: {resized_dir}")
+        
+        # Process each image for resizing
+        for img_path in png_files:
+            img_filename = os.path.basename(img_path)
+            resized_path = os.path.join(resized_dir, img_filename)
+            
+            try:
+                # Open and resize the image
+                img = Image.open(img_path)
+                
+                # Calculate new height to maintain aspect ratio
+                width_percent = (resize_width / float(img.size[0]))
+                target_height = int((float(img.size[1]) * float(width_percent)))
+                
+                # Resize with LANCZOS resampling for quality
+                resized_img = img.resize((resize_width, target_height), Image.LANCZOS)
+                resized_img.save(resized_path)
+                
+                print(f"Resized: {img_filename} to {resize_width}x{target_height}")
+                img.close()
+            except Exception as e:
+                print(f"Error resizing {img_filename}: {e}")
+    
+    # Process for WebP conversion
+    if save_webp:
+        # Create WebP directory
+        webp_dir = os.path.join(folder_path, "webp")
+        os.makedirs(webp_dir, exist_ok=True)
+        print(f"Created WebP directory: {webp_dir}")
+        
+        # Determine source files (original or resized)
+        source_files = []
+        if resize:
+            source_dir = os.path.join(folder_path, "resized")
+            source_files = glob.glob(os.path.join(source_dir, "*.png"))
+        else:
+            source_files = png_files
+        
+        # Convert each image to WebP
+        for img_path in source_files:
+            img_filename = os.path.basename(img_path)
+            webp_filename = os.path.splitext(img_filename)[0] + ".webp"
+            webp_path = os.path.join(webp_dir, webp_filename)
+            
+            try:
+                # Open and convert the image
+                img = Image.open(img_path)
+                
+                # If resize is not already applied but is requested
+                if not resize and resize_width > 0:
+                    # Calculate new height to maintain aspect ratio
+                    width_percent = (resize_width / float(img.size[0]))
+                    target_height = int((float(img.size[1]) * float(width_percent)))
+                    
+                    # Resize with LANCZOS resampling for quality
+                    img = img.resize((resize_width, target_height), Image.LANCZOS)
+                
+                # Save as WebP with good quality
+                img.save(webp_path, format="WEBP", quality=90)
+                
+                print(f"Converted to WebP: {webp_filename}")
+                img.close()
+            except Exception as e:
+                print(f"Error converting {img_filename} to WebP: {e}")
+    
+    print("Image processing completed.")
+
+if __name__ == "__main__":
+    resize = sys.argv[2].lower() == "true"
+    resize_width = int(sys.argv[3])
+    save_webp = sys.argv[4].lower() == "true"
+    
+    process_images(sys.argv[1], resize, resize_width, save_webp)
+"""
+        
+        # Create a temporary script file
+        temp_script_path = os.path.join(os.getcwd(), "temp_image_processor.py")
+        with open(temp_script_path, "w") as f:
+            f.write(script_content)
+        
+        # Run the script in a separate process with parameters from the UI
+        cmd = [
+            sys.executable, 
+            temp_script_path, 
+            directory_to_process, 
+            str(self.resize_images.get()).lower(), 
+            str(self.resize_width.get()), 
+            str(self.save_webp.get()).lower()
+        ]
+        
+        # Run in a separate thread
+        threading.Thread(
+            target=self.run_image_processor,
+            args=(cmd, temp_script_path),
+            daemon=True
+        ).start()
+    
+    def run_image_processor(self, cmd, temp_script_path):
+        """Run the image processor in a separate process"""
+        try:
+            # Run image processing
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                universal_newlines=True
+            )
+            
+            # Monitor output
+            for line in iter(process.stdout.readline, ''):
+                self.queue.put(line)
+            
+            # Wait for process to complete
+            process.wait()
+            
+            # Clean up
+            try:
+                os.remove(temp_script_path)
+            except:
+                pass
+                
+            self.queue.put("\nImage processing completed.\n")
+            self.status_var.set("Completed")
+            
+        except Exception as e:
+            self.queue.put(f"Error during image processing: {e}\n")
+            import traceback
+            self.queue.put(traceback.format_exc())
             self.status_var.set("Error")
     
     def stop_process(self):
