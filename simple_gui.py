@@ -153,29 +153,27 @@ class WebsiteScreenshotGUI:
         process_button.pack(side=tk.LEFT, padx=5, pady=5)
         
         # Status and Progress
-        status_frame = ttk.LabelFrame(parent, text="Status", padding="10")
+        status_frame = ttk.LabelFrame(parent, text="Progress", padding="10")
         status_frame.grid(row=4, column=0, sticky="nsew", padx=5, pady=5)
         
-        status_label = ttk.Label(status_frame, textvariable=self.status_var)
-        status_label.grid(row=0, column=0, sticky="w", padx=5, pady=5)
-        
+        # Progress bar (the status bar indicator has been removed)
         self.progress_bar = ttk.Progressbar(
             status_frame, 
             variable=self.progress_var, 
             maximum=100.0
         )
-        self.progress_bar.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
+        self.progress_bar.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
         
         # Log Display
         log_frame = ttk.LabelFrame(status_frame, text="Output Log", padding="10")
-        log_frame.grid(row=2, column=0, sticky="nsew", padx=5, pady=5)
+        log_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
         
         self.log_text = scrolledtext.ScrolledText(log_frame, wrap=tk.WORD, height=15)
         self.log_text.pack(fill=tk.BOTH, expand=True)
         
         # Configure weight for expanding widgets
         status_frame.columnconfigure(0, weight=1)
-        status_frame.rowconfigure(2, weight=1)
+        status_frame.rowconfigure(1, weight=1)
         
     def browse_file(self):
         file_path = filedialog.askopenfilename(
@@ -194,7 +192,6 @@ class WebsiteScreenshotGUI:
         # Reset progress
         self.progress_var.set(0.0)
         self.log_text.delete(1.0, tk.END)
-        self.status_var.set("Running...")
         self.processing_active = True
         
         # Count total URLs for progress tracking
@@ -206,7 +203,6 @@ class WebsiteScreenshotGUI:
             self.log_text.insert(tk.END, f"Found {self.total_urls} URLs to process.\n")
         except Exception as e:
             self.log_text.insert(tk.END, f"Error reading URL file: {e}\n")
-            self.status_var.set("Error")
             self.processing_active = False
             return
         
@@ -236,7 +232,6 @@ class WebsiteScreenshotGUI:
         if not os.path.exists(script_name):
             self.log_text.insert(tk.END, f"Error: Script {script_name} not found.\n")
             self.log_text.insert(tk.END, "Please make sure the script is in the same directory.\n")
-            self.status_var.set("Error")
             self.processing_active = False
             return
         
@@ -363,19 +358,10 @@ class WebsiteScreenshotGUI:
                 if "Finished processing all URLs" in line:
                     screenshot_run_completed = True
                 
-                # Process completed check
-                if "Process completed." in line or "Press Enter to exit..." in line:
-                    # Update status immediately
-                    self.status_var.set("Completed")
-                    self.progress_var.set(100.0)
-                    self.set_processing_inactive()
-                    self.root.update_idletasks()
-            
-            # Process has exited - force status update
+            # Process has exited - set progress to 100%
             self.queue.put("\nProcess completed.\n")
-            self.status_var.set("Completed")
             self.progress_var.set(100.0)
-            self.set_processing_inactive()
+            self.processing_active = False
             # Force UI to update
             self.root.update_idletasks()
             
@@ -385,34 +371,17 @@ class WebsiteScreenshotGUI:
             
         except Exception as e:
             self.queue.put(f"Error: {e}\n")
-            self.status_var.set("Error")
-            self.set_processing_inactive()
-    
-    def set_processing_inactive(self):
-        """Safely set the processing_active flag to False and update UI"""
-        self.processing_active = False
-        
-        # Force status update to "Completed" regardless of current status
-        self.status_var.set("Completed")
-        
-        # Force an update to the progress bar if needed
-        if self.progress_var.get() > 90.0:  # Almost complete
-            self.progress_var.set(100.0)
-        
-        # Force UI to update
-        self.root.update_idletasks()
+            self.processing_active = False
     
     def monitor_process_status(self):
         """Monitor process status and force update if needed"""
         # Check if process is running but shouldn't be
         if hasattr(self, 'process'):
             if self.process.poll() is not None:  # Process has terminated
-                # Process has ended but status not updated
-                if self.status_var.get() == "Running...":
-                    print("Process ended but status not updated - forcing update")
-                    self.status_var.set("Completed")
-                    self.progress_var.set(100.0)
-                    self.set_processing_inactive()
+                # Process has ended but progress not updated
+                self.progress_var.set(100.0)
+                self.processing_active = False
+                self.root.update_idletasks()
         
         # Schedule next check
         self.root.after(1000, self.monitor_process_status)
@@ -420,8 +389,8 @@ class WebsiteScreenshotGUI:
     def process_latest_images(self):
         """Run the process_last_screenshots.py script with parameters from UI"""
         
-        # Reset status
-        self.status_var.set("Processing Images...")
+        # Reset progress
+        self.progress_var.set(0.0)
         self.processing_active = True
         self.queue.put("\n--- Starting Image Processing ---\n")
         
@@ -471,7 +440,7 @@ class WebsiteScreenshotGUI:
                 self.queue.put(f"Found most recent directory in {most_recent_base}: {directory_to_process}\n")
             else:
                 self.queue.put("No screenshot directories found. Please run the screenshot process first.\n")
-                self.status_var.set("Ready")
+                self.progress_var.set(0.0)
                 self.processing_active = False
                 return
         
@@ -628,9 +597,8 @@ if __name__ == "__main__":
                 
                 # Check for completion marker
                 if "==== COMPLETED ====" in line:
-                    # Update status immediately using direct method
-                    self.status_var.set("Completed")
-                    self.set_processing_inactive()
+                    # Update progress to 100%
+                    self.progress_var.set(100.0)
                     self.root.update_idletasks()
             
             # Wait for process to complete
@@ -642,20 +610,17 @@ if __name__ == "__main__":
             except:
                 pass
                 
-            # Force status update
+            # Set progress to 100%
             self.queue.put("\nImage processing completed.\n")
-            self.status_var.set("Completed")
             self.progress_var.set(100.0)
-            self.set_processing_inactive()
-            # Force UI to update
+            self.processing_active = False
             self.root.update_idletasks()
             
         except Exception as e:
             self.queue.put(f"Error during image processing: {e}\n")
             import traceback
             self.queue.put(traceback.format_exc())
-            self.status_var.set("Error")
-            self.set_processing_inactive()
+            self.processing_active = False
     
     def stop_process(self):
         if hasattr(self, 'process'):
@@ -664,7 +629,7 @@ if __name__ == "__main__":
             else:
                 self.process.terminate()
             delattr(self, 'process')
-            self.status_var.set("Stopped")
+            self.progress_var.set(0.0)
             self.processing_active = False
             self.queue.put("\nProcess stopped by user.\n")
     
@@ -682,14 +647,8 @@ if __name__ == "__main__":
             # No more messages in the queue
             pass
         finally:
-            # Schedule the next queue check
+            # Schedule the next queue check - FIXED LINE
             self.root.after(100, self.process_queue)
-            
-            # Also update the UI to reflect the current status
-            # This ensures the status is always up to date
-            if not self.processing_active and self.status_var.get() == "Running...":
-                self.status_var.set("Completed")
-                self.root.update_idletasks()
 
 def main():
     root = tk.Tk()
