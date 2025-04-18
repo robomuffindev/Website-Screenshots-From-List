@@ -26,6 +26,7 @@ class WebsiteScreenshotGUI:
         self.total_urls = 0
         self.processed_urls = 0
         self.last_output_dir = None  # Track the last output directory
+        self.processing_active = False  # Flag to track if processing is currently active
         
         # Image processing options
         self.resize_images = tk.BooleanVar(value=True)
@@ -41,10 +42,13 @@ class WebsiteScreenshotGUI:
         
         # Configure grid weights
         main_frame.columnconfigure(0, weight=1)
-        main_frame.rowconfigure(4, weight=1)
+        main_frame.rowconfigure(5, weight=1)  # Increased for the new option
         
         # Start queue processing
         self.process_queue()
+        
+        # Start status monitor
+        self.monitor_process_status()
         
     def create_widgets(self, parent):
         # URL File Selection
@@ -72,13 +76,29 @@ class WebsiteScreenshotGUI:
         )
         regular_radio.grid(row=0, column=0, sticky="w", padx=5, pady=5)
         
+        widescreen_radio = ttk.Radiobutton(
+            type_frame, 
+            text="Widescreen Screenshots (1920x1080)", 
+            variable=self.screenshot_type, 
+            value="widescreen"
+        )
+        widescreen_radio.grid(row=1, column=0, sticky="w", padx=5, pady=5)
+        
+        fourbythree_radio = ttk.Radiobutton(
+            type_frame, 
+            text="4:3 Aspect Ratio (1920x1440)", 
+            variable=self.screenshot_type, 
+            value="fourbythree"
+        )
+        fourbythree_radio.grid(row=2, column=0, sticky="w", padx=5, pady=5)
+        
         full_radio = ttk.Radiobutton(
             type_frame, 
             text="Full-Page Screenshots (1920xHeight)", 
             variable=self.screenshot_type, 
             value="full"
         )
-        full_radio.grid(row=1, column=0, sticky="w", padx=5, pady=5)
+        full_radio.grid(row=3, column=0, sticky="w", padx=5, pady=5)
         
         # Image Processing Options
         process_frame = ttk.LabelFrame(parent, text="Image Processing Options", padding="10")
@@ -175,6 +195,7 @@ class WebsiteScreenshotGUI:
         self.progress_var.set(0.0)
         self.log_text.delete(1.0, tk.END)
         self.status_var.set("Running...")
+        self.processing_active = True
         
         # Count total URLs for progress tracking
         try:
@@ -186,22 +207,42 @@ class WebsiteScreenshotGUI:
         except Exception as e:
             self.log_text.insert(tk.END, f"Error reading URL file: {e}\n")
             self.status_var.set("Error")
+            self.processing_active = False
             return
         
         # Determine which script to run
         if self.screenshot_type.get() == "regular":
             script_name = "website_screenshot.py"
             output_dir_base = "screenshots"
+        elif self.screenshot_type.get() == "widescreen":
+            script_name = "website_screenshot_widescreen.py"
+            output_dir_base = "screenshots_widescreen"
+        elif self.screenshot_type.get() == "fourbythree":
+            script_name = "website_screenshot_fourbythree.py"
+            output_dir_base = "screenshots_fourbythree"
         else:  # "full"
             script_name = "website_screenshot_full.py"
             output_dir_base = "screenshots_full"
+        
+        # For widescreen mode, we need to create the script if it doesn't exist
+        if self.screenshot_type.get() == "widescreen" and not os.path.exists(script_name):
+            self.create_widescreen_script()
+            
+        # For 4:3 mode, we need to create the script if it doesn't exist
+        if self.screenshot_type.get() == "fourbythree" and not os.path.exists(script_name):
+            self.create_fourbythree_script()
         
         # Check if the script exists
         if not os.path.exists(script_name):
             self.log_text.insert(tk.END, f"Error: Script {script_name} not found.\n")
             self.log_text.insert(tk.END, "Please make sure the script is in the same directory.\n")
             self.status_var.set("Error")
+            self.processing_active = False
             return
+        
+        # Create output directory if it doesn't exist
+        if not os.path.exists(output_dir_base):
+            os.makedirs(output_dir_base)
         
         # Create and start thread
         self.process_thread = threading.Thread(
@@ -210,6 +251,74 @@ class WebsiteScreenshotGUI:
             daemon=True
         )
         self.process_thread.start()
+    
+    def create_widescreen_script(self):
+        """Create the widescreen screenshot script based on the regular one"""
+        try:
+            # Check if the regular script exists
+            if not os.path.exists("website_screenshot.py"):
+                self.log_text.insert(tk.END, "Error: Cannot create widescreen script, website_screenshot.py not found.\n")
+                return False
+            
+            # Read the regular script
+            with open("website_screenshot.py", 'r') as f:
+                script_content = f.read()
+            
+            # Modify for widescreen (1920x1080)
+            script_content = script_content.replace(
+                'chrome_options.add_argument("--window-size=1920,1920")',
+                'chrome_options.add_argument("--window-size=1920,1080")'
+            )
+            
+            # Replace output directory
+            script_content = script_content.replace(
+                'output_dir = os.path.join(os.getcwd(), "screenshots", timestamp)',
+                'output_dir = os.path.join(os.getcwd(), "screenshots_widescreen", timestamp)'
+            )
+            
+            # Write to new file
+            with open("website_screenshot_widescreen.py", 'w') as f:
+                f.write(script_content)
+            
+            self.log_text.insert(tk.END, "Created widescreen screenshot script.\n")
+            return True
+        except Exception as e:
+            self.log_text.insert(tk.END, f"Error creating widescreen script: {e}\n")
+            return False
+            
+    def create_fourbythree_script(self):
+        """Create the 4:3 aspect ratio screenshot script based on the regular one"""
+        try:
+            # Check if the regular script exists
+            if not os.path.exists("website_screenshot.py"):
+                self.log_text.insert(tk.END, "Error: Cannot create 4:3 script, website_screenshot.py not found.\n")
+                return False
+            
+            # Read the regular script
+            with open("website_screenshot.py", 'r') as f:
+                script_content = f.read()
+            
+            # Modify for 4:3 aspect ratio (1920x1440)
+            script_content = script_content.replace(
+                'chrome_options.add_argument("--window-size=1920,1920")',
+                'chrome_options.add_argument("--window-size=1920,1440")'
+            )
+            
+            # Replace output directory
+            script_content = script_content.replace(
+                'output_dir = os.path.join(os.getcwd(), "screenshots", timestamp)',
+                'output_dir = os.path.join(os.getcwd(), "screenshots_fourbythree", timestamp)'
+            )
+            
+            # Write to new file
+            with open("website_screenshot_fourbythree.py", 'w') as f:
+                f.write(script_content)
+            
+            self.log_text.insert(tk.END, "Created 4:3 aspect ratio screenshot script.\n")
+            return True
+        except Exception as e:
+            self.log_text.insert(tk.END, f"Error creating 4:3 aspect ratio script: {e}\n")
+            return False
     
     def run_process(self, script_name, url_file, output_dir_base):
         try:
@@ -232,6 +341,7 @@ class WebsiteScreenshotGUI:
             
             # Monitor output
             for line in iter(self.process.stdout.readline, ''):
+                # Add line to queue for display in the UI
                 self.queue.put(line)
                 
                 # Update progress based on output
@@ -252,23 +362,68 @@ class WebsiteScreenshotGUI:
                 # Check if processing is completed
                 if "Finished processing all URLs" in line:
                     screenshot_run_completed = True
+                
+                # Process completed check
+                if "Process completed." in line or "Press Enter to exit..." in line:
+                    # Update status immediately
+                    self.status_var.set("Completed")
+                    self.progress_var.set(100.0)
+                    self.set_processing_inactive()
+                    self.root.update_idletasks()
             
-            # Process completed
+            # Process has exited - force status update
+            self.queue.put("\nProcess completed.\n")
             self.status_var.set("Completed")
             self.progress_var.set(100.0)
+            self.set_processing_inactive()
+            # Force UI to update
+            self.root.update_idletasks()
             
-            self.queue.put("\nProcess completed.\n")
-            
-            # If the checkbox was enabled, run image processing
+            # Prompt for image processing
             if (self.resize_images.get() or self.save_webp.get()) and screenshot_run_completed and self.last_output_dir:
                 self.queue.put("\nWould you like to process images now? Use the 'Process Latest Images' button.\n")
             
         except Exception as e:
             self.queue.put(f"Error: {e}\n")
             self.status_var.set("Error")
+            self.set_processing_inactive()
+    
+    def set_processing_inactive(self):
+        """Safely set the processing_active flag to False and update UI"""
+        self.processing_active = False
+        
+        # Force status update to "Completed" regardless of current status
+        self.status_var.set("Completed")
+        
+        # Force an update to the progress bar if needed
+        if self.progress_var.get() > 90.0:  # Almost complete
+            self.progress_var.set(100.0)
+        
+        # Force UI to update
+        self.root.update_idletasks()
+    
+    def monitor_process_status(self):
+        """Monitor process status and force update if needed"""
+        # Check if process is running but shouldn't be
+        if hasattr(self, 'process'):
+            if self.process.poll() is not None:  # Process has terminated
+                # Process has ended but status not updated
+                if self.status_var.get() == "Running...":
+                    print("Process ended but status not updated - forcing update")
+                    self.status_var.set("Completed")
+                    self.progress_var.set(100.0)
+                    self.set_processing_inactive()
+        
+        # Schedule next check
+        self.root.after(1000, self.monitor_process_status)
     
     def process_latest_images(self):
         """Run the process_last_screenshots.py script with parameters from UI"""
+        
+        # Reset status
+        self.status_var.set("Processing Images...")
+        self.processing_active = True
+        self.queue.put("\n--- Starting Image Processing ---\n")
         
         # Check if we have a known output directory from the last run
         directory_to_process = None
@@ -299,30 +454,28 @@ class WebsiteScreenshotGUI:
                 timestamp_dirs.sort(reverse=True)
                 return os.path.join(base_dir, timestamp_dirs[0])
             
-            # Check regular screenshots
-            latest_regular = find_latest_dir("screenshots")
-            latest_full = find_latest_dir("screenshots_full")
+            # Check all screenshot directories
+            latest_dirs = {}
+            latest_times = {}
             
-            if latest_regular and latest_full:
-                # Compare timestamps to find the most recent one
-                if os.path.getmtime(latest_regular) > os.path.getmtime(latest_full):
-                    directory_to_process = latest_regular
-                    self.queue.put(f"Found most recent directory in regular screenshots: {directory_to_process}\n")
-                else:
-                    directory_to_process = latest_full
-                    self.queue.put(f"Found most recent directory in full-page screenshots: {directory_to_process}\n")
-            elif latest_regular:
-                directory_to_process = latest_regular
-                self.queue.put(f"Found most recent directory in regular screenshots: {directory_to_process}\n")
-            elif latest_full:
-                directory_to_process = latest_full
-                self.queue.put(f"Found most recent directory in full-page screenshots: {directory_to_process}\n")
+            for dir_base in ["screenshots", "screenshots_full", "screenshots_widescreen", "screenshots_fourbythree"]:
+                latest_dir = find_latest_dir(dir_base)
+                if latest_dir:
+                    latest_dirs[dir_base] = latest_dir
+                    latest_times[dir_base] = os.path.getmtime(latest_dir)
+            
+            if latest_times:
+                # Find the most recent directory
+                most_recent_base = max(latest_times.items(), key=lambda x: x[1])[0]
+                directory_to_process = latest_dirs[most_recent_base]
+                self.queue.put(f"Found most recent directory in {most_recent_base}: {directory_to_process}\n")
             else:
                 self.queue.put("No screenshot directories found. Please run the screenshot process first.\n")
+                self.status_var.set("Ready")
+                self.processing_active = False
                 return
         
         # Now that we have a directory to process, create and run the process
-        self.status_var.set("Processing Images...")
         self.queue.put(f"\nStarting image processing with the following options:\n")
         self.queue.put(f"- Resize: {self.resize_images.get()}\n")
         self.queue.put(f"- Width: {self.resize_width.get()}\n")
@@ -424,6 +577,7 @@ def process_images(folder_path, resize=True, resize_width=800, save_webp=True):
                 print(f"Error converting {img_filename} to WebP: {e}")
     
     print("Image processing completed.")
+    print("\\n==== COMPLETED ====\\n")  # Special marker for completion
 
 if __name__ == "__main__":
     resize = sys.argv[2].lower() == "true"
@@ -471,6 +625,13 @@ if __name__ == "__main__":
             # Monitor output
             for line in iter(process.stdout.readline, ''):
                 self.queue.put(line)
+                
+                # Check for completion marker
+                if "==== COMPLETED ====" in line:
+                    # Update status immediately using direct method
+                    self.status_var.set("Completed")
+                    self.set_processing_inactive()
+                    self.root.update_idletasks()
             
             # Wait for process to complete
             process.wait()
@@ -481,14 +642,20 @@ if __name__ == "__main__":
             except:
                 pass
                 
+            # Force status update
             self.queue.put("\nImage processing completed.\n")
             self.status_var.set("Completed")
+            self.progress_var.set(100.0)
+            self.set_processing_inactive()
+            # Force UI to update
+            self.root.update_idletasks()
             
         except Exception as e:
             self.queue.put(f"Error during image processing: {e}\n")
             import traceback
             self.queue.put(traceback.format_exc())
             self.status_var.set("Error")
+            self.set_processing_inactive()
     
     def stop_process(self):
         if hasattr(self, 'process'):
@@ -498,6 +665,7 @@ if __name__ == "__main__":
                 self.process.terminate()
             delattr(self, 'process')
             self.status_var.set("Stopped")
+            self.processing_active = False
             self.queue.put("\nProcess stopped by user.\n")
     
     def process_queue(self):
@@ -515,7 +683,13 @@ if __name__ == "__main__":
             pass
         finally:
             # Schedule the next queue check
-            self.root.after(self.update_interval, self.process_queue)
+            self.root.after(100, self.process_queue)
+            
+            # Also update the UI to reflect the current status
+            # This ensures the status is always up to date
+            if not self.processing_active and self.status_var.get() == "Running...":
+                self.status_var.set("Completed")
+                self.root.update_idletasks()
 
 def main():
     root = tk.Tk()

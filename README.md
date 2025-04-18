@@ -4,8 +4,10 @@ A versatile tool for capturing high-quality screenshots of websites from a text 
 
 ## Features
 
-- **Two screenshot modes**:
+- **Multiple screenshot modes**:
   - **Regular mode**: Fixed 1920×1920 square screenshots
+  - **Widescreen mode**: 1920×1080 widescreen format screenshots
+  - **4:3 Aspect Ratio mode**: 1920×1440 format screenshots
   - **Full-page mode**: Full-height screenshots with 1920px width
 - **Dual capture for each website**:
   - Initial screenshot (immediate capture after page load)
@@ -14,7 +16,8 @@ A versatile tool for capturing high-quality screenshots of websites from a text 
   - Resize images to custom width (maintaining aspect ratio)
   - Convert images to WebP format for optimization
 - **User-friendly GUI interface**
-- **Progress tracking**
+- **Real-time progress tracking**
+- **Reliable status updates**
 - **Automatic ChromeDriver detection**
 - **Virtual environment isolation**
 - **Error recovery and robustness**
@@ -64,6 +67,8 @@ The default `urls.txt` file in the root directory is used if no other file is se
 2. Select your URL file (or use the default)
 3. Choose screenshot type:
    - Regular (1920×1920)
+   - Widescreen (1920×1080)
+   - 4:3 Aspect Ratio (1920×1440)
    - Full-page (1920×height)
 4. Set image processing options if desired:
    - Check/uncheck "Resize Images After Process"
@@ -120,8 +125,32 @@ screenshots/
         ├── google_com_initial.webp
         └── google_com_final.webp
 
-screenshots_full/
+screenshots_widescreen/
 └── 2025-04-16_14-35-12/
+    ├── google_com_initial.png
+    ├── google_com_final.png
+    ├── summary.txt
+    ├── resized/               # Created by image processor
+    │   ├── google_com_initial.png
+    │   └── google_com_final.png
+    └── webp/                  # Created by image processor
+        ├── google_com_initial.webp
+        └── google_com_final.webp
+        
+screenshots_fourbythree/
+└── 2025-04-16_14-40-23/
+    ├── google_com_initial.png
+    ├── google_com_final.png
+    ├── summary.txt
+    ├── resized/               # Created by image processor
+    │   ├── google_com_initial.png
+    │   └── google_com_final.png
+    └── webp/                  # Created by image processor
+        ├── google_com_initial.webp
+        └── google_com_final.webp
+
+screenshots_full/
+└── 2025-04-16_14-45-36/
     ├── google_com_initial_full.png
     ├── google_com_final_full.png
     ├── summary.txt
@@ -130,7 +159,7 @@ screenshots_full/
     │   └── google_com_final_full.png
     └── webp/                  # Created by image processor
         ├── google_com_initial_full.webp
-        └── google_com_initial_full.webp
+        └── google_com_final_full.webp
 ```
 
 ## Workflow Examples
@@ -143,7 +172,7 @@ screenshots_full/
 4. Choose screenshot type
 5. Set image processing options
 6. Click "Start Screenshot Process"
-7. Wait for completion
+7. Wait for completion (status will change to "Completed")
 8. Click "Process Latest Images" button
 9. View results in the log window
 
@@ -178,6 +207,8 @@ The image processor uses:
 ```
 WebsiteScreenshotTool/
 ├── website_screenshot.py       # Regular screenshots script
+├── website_screenshot_widescreen.py  # Widescreen screenshots script (auto-generated)
+├── website_screenshot_fourbythree.py # 4:3 aspect ratio script (auto-generated)
 ├── website_screenshot_full.py  # Full-page screenshots script
 ├── simple_gui.py               # GUI interface with image processing button
 ├── process_last_screenshots.py # Standalone image processor script
@@ -195,7 +226,11 @@ WebsiteScreenshotTool/
 ### Main Controls
 
 - **URL File**: Select the text file containing your list of websites
-- **Screenshot Type**: Choose between regular (square) or full-page screenshots
+- **Screenshot Type**: Choose between four aspect ratio options
+  - Regular (square 1920×1920)
+  - Widescreen (16:9 ratio 1920×1080)
+  - 4:3 Aspect Ratio (1920×1440)
+  - Full-page (1920×dynamic height)
 - **Image Processing Options**: Set options for post-processing images
   - Resize Images: Reduces the width to the specified value
   - WebP Conversion: Creates optimized WebP copies of images
@@ -203,14 +238,21 @@ WebsiteScreenshotTool/
   - Start Screenshot Process: Begin taking screenshots
   - Stop: Cancel the current process
   - Process Latest Images: Apply image processing to the most recent screenshot directory
+- **Status Display**: Shows current operation status
+  - "Ready": Waiting for user input
+  - "Running...": Operation in progress
+  - "Completed": Operation finished successfully
+  - "Error": An error occurred
+  - "Stopped": Operation was cancelled by user
 
 ### Workflow
 
 1. Configure settings (URL file, screenshot type, processing options)
 2. Click "Start Screenshot Process"
-3. Monitor progress in the log window
-4. When screenshots are complete, click "Process Latest Images"
-5. View the results in the log window
+3. Monitor progress in the log window and progress bar
+4. When screenshots are complete, status will change to "Completed"
+5. Click "Process Latest Images" to apply image processing
+6. Review the results in the log window
 
 ## Troubleshooting
 
@@ -223,6 +265,8 @@ WebsiteScreenshotTool/
 - **RAM usage**: For very long webpages in full-page mode, you might experience high memory usage. Consider processing fewer URLs at once.
 
 - **Character encoding errors**: The script handles UTF-8 encoding for all file operations. If you encounter encoding errors, ensure your console supports UTF-8.
+
+- **Status not updating**: If the status doesn't update correctly after process completion (fixed in latest version), restart the application.
 
 ## License
 
