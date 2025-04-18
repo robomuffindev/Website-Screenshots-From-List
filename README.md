@@ -2,6 +2,9 @@
 
 A versatile tool for capturing high-quality screenshots of websites from a text list of URLs, with integrated image processing capabilities.
 
+![screenshot_app_image_v2](https://github.com/user-attachments/assets/f72cf274-2f09-4e65-a4fe-e5f2e93f28a5)
+
+
 ## Features
 
 - **Multiple screenshot modes**:
